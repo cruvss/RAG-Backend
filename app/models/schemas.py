@@ -12,5 +12,5 @@ class ChatResponse(BaseModel):
 class BookingRequest(BaseModel):
     name: str
     email: EmailStr
-    date: str  # ISO format
+    date: str  
     time: str
