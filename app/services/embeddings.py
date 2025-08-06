@@ -7,10 +7,21 @@ import os
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
+
+
+
+def get_qdrant_client() -> QdrantClient:
+    return QdrantClient(
+        url=os.getenv("QDRANT_URL"),
+        api_key=os.getenv("QDRANT_API_KEY")
+    )
+    
 qdrant_client = QdrantClient(
     url=os.getenv("QDRANT_URL"),
     api_key=os.getenv("QDRANT_API_KEY")
 )
+
+
 
 def generate_embeddings(chunks):
     return model.encode(chunks, show_progress_bar=False).tolist()
