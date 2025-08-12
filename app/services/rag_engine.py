@@ -3,20 +3,24 @@ from app.services.embeddings import generate_embeddings
 from app.services.embeddings import get_qdrant_client
 from qdrant_client.models import Filter, SearchParams, PointStruct
 from app.models.schemas import BookingRequest
+from app.services.booking_store import save_booking
+from app.services.email_service import send_confirmation_email
 from typing import List
-from app.config import COLLECTION_NAME
 import os
+import re
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+
 model = genai.GenerativeModel("models/gemini-1.5-flash")
 
 
 
-def retrieve_chunks_from_qdrant(query: str, top_k: int = 5) -> List[str]:
+def retrieve_chunks_from_qdrant(query: str, top_k: int = 5, collection_name='semantic') -> List[str]:
     qdrant = get_qdrant_client()
 
     # Embed the query
@@ -24,7 +28,7 @@ def retrieve_chunks_from_qdrant(query: str, top_k: int = 5) -> List[str]:
 
     # Search Qdrant
     hits = qdrant.search(
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         query_vector=query_vector,
         limit=top_k,
         search_params=SearchParams(hnsw_ef=128),
@@ -33,14 +37,53 @@ def retrieve_chunks_from_qdrant(query: str, top_k: int = 5) -> List[str]:
     return [hit.payload["text"] for hit in hits if "text" in hit.payload]
 
 
+def retrieve_chunks_from_qdrant_exact(query: str, top_k: int = 5, collection_name='semantic')   -> List[str]:
+    qdrant = get_qdrant_client()
 
-def generate_rag_response(query: str, session_id: str) -> str:
-    relevant_chunks = retrieve_chunks_from_qdrant(query)
+    # Embed the query
+    query_vector = generate_embeddings(query)
+
+    # Search Qdrant
+    hits = qdrant.search(
+        collection_name=collection_name,
+        query_vector=query_vector,
+        limit=top_k,
+        search_params=SearchParams(exact=True),
+    )
+
+    return [hit.payload["text"] for hit in hits if "text" in hit.payload]
+
+
+
+def generate_rag_response(query: str, collection_name='semantic', search_method: str = "exact") -> str:
+    if search_method == "exact":
+        relevant_chunks = retrieve_chunks_from_qdrant_exact(query=query, collection_name=collection_name)
+    else:
+        relevant_chunks = retrieve_chunks_from_qdrant(query=query, collection_name=collection_name)
+
     context = "\n".join(relevant_chunks)
-    prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
+    prompt = f"""
+    You are a knowledgeable assistant. Use ONLY the information from the provided context to answer the question.
+    If the answer is not in the context, say "I could not find the answer in the provided information."
+
+    Context:
+    {context}
+
+    Question:
+    {query}
+
+    Instructions:
+    - Respond in a complete sentence, directly answering the question.
+    - Use only facts from the context — do not make up information.
+    - If the context contains multiple relevant facts, combine them into one coherent answer.
+    - Ensure your answer is precise, factual, and grammatically correct.
+
+    Answer:
+    """
 
     response = model.generate_content(prompt)
     return response.text
+
 
 
 def is_booking_intent(user_query: str) -> bool:
@@ -48,8 +91,7 @@ def is_booking_intent(user_query: str) -> bool:
     return any(keyword in user_query.lower() for keyword in booking_keywords)
 
 
-import re
-import json
+
 
 def extract_booking_details(text: str) -> dict:
     prompt = f"""
@@ -80,13 +122,11 @@ def extract_booking_details(text: str) -> dict:
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        print("⚠️ Gemini responded with invalid JSON:")
+        print(" Gemini responded with invalid JSON:")
         return {}
 
 
 
-from app.services.booking_store import save_booking
-from app.services.email_service import send_confirmation_email
 
 def handle_booking_flow(user_query: str) -> str:
     booking_data = extract_booking_details(user_query)
@@ -103,11 +143,11 @@ def handle_booking_flow(user_query: str) -> str:
     date=booking_data["date"]
     time=booking_data["time"]
     
-    print(type(name),type(email),type(date),type(time))
+    print(name,email,date,time)
     
     booking = BookingRequest(name=name, email=email, date=date, time=time)
     save_booking(booking)
     send_confirmation_email(booking)
-    return f"✅ Interview booked for {booking_data['name']} on {booking_data['date']} at {booking_data['time']}."
+    return f" Interview booked for {booking_data['name']} on {booking_data['date']} at {booking_data['time']}."
 
 
