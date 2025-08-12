@@ -1,29 +1,37 @@
-import os
+"""Application configuration loaded from environment variables and defaults."""
 
-# Load environment vairables
+import os
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Load environment variables from .env
 load_dotenv()
 
-# Configuration constants
+# File handling
+ALLOWED_EXTENSIONS: set[str] = {"pdf", "txt"}
+MAX_FILE_SIZE: int = 25 * 1024 * 1024  # 25 MB
+COLLECTION_NAMES: tuple[str, ...] = ("semantic", "recursive")
+DB_PATH: Path = Path("app/metadata.db")
+UPLOAD_DIR: Path = Path("app/uploads")
 
-ALLOWED_EXTENSIONS = {'pdf', 'txt'}
-MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
-COLLECTION_NAME = "rag_documents"
-DB_PATH = "app/metadata.db"
-UPLOAD_DIR = "app/uploads"
+# Redis configuration
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
+if not REDIS_PASSWORD:
+    raise RuntimeError("Missing required environment variable: REDIS_PASSWORD")
 
-# Redis Config
-REDIS_CONFIG = {
+REDIS_CONFIG: dict[str, object] = {
     "host": "redis-17976.crce179.ap-south-1-1.ec2.redns.redis-cloud.com",
     "port": 17976,
     "decode_responses": True,
     "username": "default",
-    "password": os.getenv('REDIS_PASSWORD')
+    "password": REDIS_PASSWORD,
 }
 
+# Email service
+SMTP_PASS = os.getenv("SMTP_PASS")
+if not SMTP_PASS:
+    raise RuntimeError("Missing required environment variable: SMTP_PASS")
 
-# Email Service
-SMTP_HOST = "smtp.mailersend.net"
-SMTP_PORT = 587
-SMTP_USER = "MS_Oi2rdx@test-2p0347zxewylzdrn.mlsender.net"
-SMTP_PASS = os.getenv('SMTP_PASS')
+SMTP_HOST: str = "smtp.mailersend.net"
+SMTP_PORT: int = 587
+SMTP_USER: str = "MS_Oi2rdx@test-2p0347zxewylzdrn.mlsender.net"
